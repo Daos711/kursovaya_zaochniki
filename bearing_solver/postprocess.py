@@ -1,11 +1,11 @@
 """
 Постобработка: вычисление F, μ, Q и построение графиков.
+Расчёт разбит на два этапа для поэтапного отображения в GUI.
 """
 
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")  # безоконный бэкенд по умолчанию; GUI переключит на TkAgg
-import matplotlib.pyplot as plt
+matplotlib.use("Agg")
 from matplotlib.figure import Figure
 from joblib import Parallel, delayed
 
@@ -55,7 +55,7 @@ def _compute_for_epsilon(epsilon, params, phi_1D, Z_1D,
     mu_nd = f_nd / F_nd if F_nd > 0 else 0.0
 
     q_nd = H_nd - 0.5 * H_nd ** 3 * dP_nd
-    Q_nd = U * c * R * _trapz(_trapz(q_nd, phi_1D, axis=1), Z_1D) * 1000  # л/с
+    Q_nd = U * c * R * _trapz(_trapz(q_nd, phi_1D, axis=1), Z_1D) * 1000
 
     # --- С углублениями ---
     H_dep = create_H_with_depressions(H0, params, Phi_mesh, Z_mesh,
@@ -81,23 +81,14 @@ def _compute_for_epsilon(epsilon, params, phi_1D, Z_1D,
 
 
 # -------------------------------------------------------------------
-#  Полный расчёт: 3D-поля + перебор по ε
+#  ЭТАП 1: 3D-поля при заданном ε (давление + зазор)
 # -------------------------------------------------------------------
 
-def run_full_calculation(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
-                         n_jobs=-1, progress_callback=None):
+def run_stage1_3d(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
+                  progress_callback=None):
     """
-    Выполняет полный расчёт для выбранного варианта.
-
-    Returns
-    -------
-    result : dict с ключами:
-        'Phi_mesh', 'Z_mesh', 'phi_1D', 'Z_1D',
-        'H_nd_3d', 'H_dep_3d', 'P_nd_3d', 'P_dep_3d',  (для epsilon_3d)
-        'epsilon_values', 'F_nd', 'F_dep', 'mu_nd', 'mu_dep',
-        'Q_nd', 'Q_dep',
-        'F_nd_3d', 'mu_nd_3d', 'Q_nd_3d',
-        'F_dep_3d', 'mu_dep_3d', 'Q_dep_3d'
+    Решает Рейнольдса для одного ε и возвращает 3D-поля.
+    GUI может показать графики сразу после этого этапа.
     """
     phi_1D, Z_1D, Phi_mesh, Z_mesh, d_phi, d_Z = make_grid(num_phi, num_Z)
     phi_c_flat, Z_c_flat = compute_depression_centers(params)
@@ -115,24 +106,30 @@ def run_full_calculation(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
     cos_phi = np.cos(Phi_mesh)
     sin_phi = np.sin(Phi_mesh)
 
-    # ---- 3D-поля при epsilon_3d ----
     if progress_callback:
-        progress_callback("Расчёт 3D полей...")
+        progress_callback("stage1_start", 0)
 
+    # Формирование зазора
     H0_3d = base_clearance(epsilon_3d, Phi_mesh)
     H_nd_3d = H0_3d.copy()
     H_dep_3d = create_H_with_depressions(H0_3d, params, Phi_mesh, Z_mesh,
                                           phi_c_flat, Z_c_flat)
+    if progress_callback:
+        progress_callback("log", "Зазор сформирован, решаем Рейнольдса...")
 
+    # Решаем без углублений
     P_nd_3d, _, iter_nd = solve_reynolds_gauss_seidel_numba(
         H_nd_3d, d_phi, d_Z, R, L, omega=1.5, max_iter=50000)
     if progress_callback:
-        progress_callback(f"Без углублений: {iter_nd} итераций")
+        progress_callback("log", f"Без углублений: {iter_nd} итераций")
+        progress_callback("stage1_progress", 40)
 
+    # Решаем с углублениями
     P_dep_3d, _, iter_dep = solve_reynolds_gauss_seidel_numba(
         H_dep_3d, d_phi, d_Z, R, L, omega=1.5, max_iter=50000)
     if progress_callback:
-        progress_callback(f"С углублениями: {iter_dep} итераций")
+        progress_callback("log", f"С углублениями: {iter_dep} итераций")
+        progress_callback("stage1_progress", 80)
 
     # Числовые результаты при epsilon_3d
     Fr = _trapz(_trapz(P_nd_3d * cos_phi, phi_1D, axis=1), Z_1D)
@@ -155,11 +152,44 @@ def run_full_calculation(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
     q_i = H_dep_3d - 0.5 * H_dep_3d ** 3 * dP
     Q_dep_3d = U * c * R * _trapz(_trapz(q_i, phi_1D, axis=1), Z_1D) * 1000
 
-    # ---- Перебор по ε ----
+    if progress_callback:
+        progress_callback("stage1_progress", 100)
+
+    return {
+        "Phi_mesh": Phi_mesh, "Z_mesh": Z_mesh,
+        "phi_1D": phi_1D, "Z_1D": Z_1D,
+        "d_phi": d_phi, "d_Z": d_Z,
+        "phi_c_flat": phi_c_flat, "Z_c_flat": Z_c_flat,
+        "H_nd_3d": H_nd_3d, "H_dep_3d": H_dep_3d,
+        "P_nd_3d": P_nd_3d, "P_dep_3d": P_dep_3d,
+        "F_nd_3d": F_nd_3d, "mu_nd_3d": mu_nd_3d, "Q_nd_3d": Q_nd_3d,
+        "F_dep_3d": F_dep_3d, "mu_dep_3d": mu_dep_3d, "Q_dep_3d": Q_dep_3d,
+    }
+
+
+# -------------------------------------------------------------------
+#  ЭТАП 2: Перебор по ε (графики зависимостей)
+# -------------------------------------------------------------------
+
+def run_stage2_epsilon_sweep(params, stage1_result, n_jobs=-1,
+                             progress_callback=None):
+    """
+    Параллельный перебор по ε. Вызывается после stage1.
+    """
+    phi_1D = stage1_result["phi_1D"]
+    Z_1D = stage1_result["Z_1D"]
+    Phi_mesh = stage1_result["Phi_mesh"]
+    Z_mesh = stage1_result["Z_mesh"]
+    d_phi = stage1_result["d_phi"]
+    d_Z = stage1_result["d_Z"]
+    phi_c_flat = stage1_result["phi_c_flat"]
+    Z_c_flat = stage1_result["Z_c_flat"]
+
     epsilon_values = np.linspace(0.05, 0.8, 15)
 
     if progress_callback:
-        progress_callback("Перебор по ε (15 точек)...")
+        progress_callback("stage2_start", 0)
+        progress_callback("log", "Перебор по ε (15 точек)...")
 
     results_eps = Parallel(n_jobs=n_jobs, verbose=0)(
         delayed(_compute_for_epsilon)(
@@ -168,7 +198,6 @@ def run_full_calculation(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
         for eps in epsilon_values
     )
 
-    # Распаковка
     F_nd_list, mu_nd_list, Q_nd_list = [], [], []
     F_dep_list, mu_dep_list, Q_dep_list = [], [], []
     for res in results_eps:
@@ -181,26 +210,12 @@ def run_full_calculation(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
         Q_dep_list.append(q_dep)
 
     if progress_callback:
-        progress_callback("Расчёт завершён.")
+        progress_callback("stage2_progress", 100)
+        progress_callback("log", "Расчёт завершён.")
 
-    return {
-        "Phi_mesh": Phi_mesh,
-        "Z_mesh": Z_mesh,
-        "phi_1D": phi_1D,
-        "Z_1D": Z_1D,
-        # 3D поля
-        "H_nd_3d": H_nd_3d,
-        "H_dep_3d": H_dep_3d,
-        "P_nd_3d": P_nd_3d,
-        "P_dep_3d": P_dep_3d,
-        # Числовые результаты при eps_3d
-        "F_nd_3d": F_nd_3d,
-        "mu_nd_3d": mu_nd_3d,
-        "Q_nd_3d": Q_nd_3d,
-        "F_dep_3d": F_dep_3d,
-        "mu_dep_3d": mu_dep_3d,
-        "Q_dep_3d": Q_dep_3d,
-        # Зависимости от ε
+    # Объединяем с результатами stage1
+    result = dict(stage1_result)
+    result.update({
         "epsilon_values": epsilon_values,
         "F_nd": np.array(F_nd_list),
         "F_dep": np.array(F_dep_list),
@@ -208,7 +223,8 @@ def run_full_calculation(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
         "mu_dep": np.array(mu_dep_list),
         "Q_nd": np.array(Q_nd_list),
         "Q_dep": np.array(Q_dep_list),
-    }
+    })
+    return result
 
 
 # -------------------------------------------------------------------
@@ -321,7 +337,6 @@ def save_results(result, params, folder):
     os.makedirs(folder, exist_ok=True)
     dep_name = params["depression_name"]
 
-    # Графики
     for name, plot_fn in [("pressure_3d", plot_pressure_3d),
                            ("clearance_3d", plot_clearance_3d),
                            ("F_vs_eps", plot_F_vs_epsilon),
@@ -330,7 +345,6 @@ def save_results(result, params, folder):
         fig = plot_fn(result, dep_name)
         fig.savefig(os.path.join(folder, f"{name}.png"), dpi=150)
 
-    # CSV
     eps = result["epsilon_values"]
     header = "epsilon,F_no_dep,F_dep,mu_no_dep,mu_dep,Q_no_dep,Q_dep"
     data = np.column_stack([eps,

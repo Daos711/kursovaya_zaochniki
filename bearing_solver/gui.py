@@ -1,290 +1,415 @@
 """
-Графический интерфейс (tkinter) для решателя подшипника скольжения.
+GUI на PyQt5 для решателя подшипника скольжения.
+Двухэтапный расчёт: 3D-графики появляются сразу после решения Рейнольдса,
+графики зависимостей — после перебора по ε.
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+import sys
 import threading
 
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QGroupBox, QLabel, QSpinBox, QDoubleSpinBox, QPushButton,
+    QTabWidget, QTextEdit, QProgressBar, QFileDialog, QMessageBox,
+    QSplitter, QFrame,
+)
+from PyQt5.QtCore import Qt, pyqtSignal, QObject
+from PyQt5.QtGui import QFont
+
 import matplotlib
-matplotlib.use("TkAgg")
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+matplotlib.use("Agg")
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from .variants import get_variant, GEOMETRIES, DEPRESSION_TYPES
-from .postprocess import (run_full_calculation,
-                          plot_pressure_3d, plot_clearance_3d,
-                          plot_F_vs_epsilon, plot_mu_vs_epsilon,
-                          plot_Q_vs_epsilon, save_results)
+from .postprocess import (
+    run_stage1_3d, run_stage2_epsilon_sweep,
+    plot_pressure_3d, plot_clearance_3d,
+    plot_F_vs_epsilon, plot_mu_vs_epsilon,
+    plot_Q_vs_epsilon, save_results,
+)
 
 
-class BearingApp(tk.Tk):
+# -------------------------------------------------------------------
+#  Сигналы из рабочего потока в GUI
+# -------------------------------------------------------------------
+
+class WorkerSignals(QObject):
+    log = pyqtSignal(str)
+    stage1_progress = pyqtSignal(int)
+    stage2_progress = pyqtSignal(int)
+    stage1_done = pyqtSignal(dict)
+    stage2_done = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+
+# -------------------------------------------------------------------
+#  Главное окно
+# -------------------------------------------------------------------
+
+class BearingApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.title("Решатель подшипника скольжения с микрорельефом")
-        self.geometry("1280x800")
-        self.minsize(1024, 700)
+        self.setWindowTitle("Подшипник скольжения — решатель с микрорельефом")
+        self.resize(1400, 850)
 
-        self._result = None
+        self._stage1_result = None
+        self._full_result = None
         self._params = None
         self._calculating = False
+        self._signals = WorkerSignals()
 
+        self._connect_signals()
         self._build_ui()
+        self._on_variant_changed()
+
+    # -----------------------------------------------------------------
+    #  Сигналы
+    # -----------------------------------------------------------------
+    def _connect_signals(self):
+        self._signals.log.connect(self._append_log)
+        self._signals.stage1_progress.connect(self._bar_stage1.setValue
+                                               if hasattr(self, '_bar_stage1')
+                                               else lambda v: None)
+        self._signals.stage2_progress.connect(self._bar_stage2.setValue
+                                               if hasattr(self, '_bar_stage2')
+                                               else lambda v: None)
+        self._signals.stage1_done.connect(self._on_stage1_done)
+        self._signals.stage2_done.connect(self._on_stage2_done)
+        self._signals.error.connect(self._on_error)
+
+    def _reconnect_signals(self):
+        """Повторное подключение после создания виджетов."""
+        try:
+            self._signals.stage1_progress.disconnect()
+        except TypeError:
+            pass
+        try:
+            self._signals.stage2_progress.disconnect()
+        except TypeError:
+            pass
+        self._signals.stage1_progress.connect(self._bar_stage1.setValue)
+        self._signals.stage2_progress.connect(self._bar_stage2.setValue)
 
     # -----------------------------------------------------------------
     #  UI
     # -----------------------------------------------------------------
     def _build_ui(self):
-        # --- Левая панель ввода ---
-        left = ttk.Frame(self, padding=10)
-        left.pack(side=tk.LEFT, fill=tk.Y)
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
 
-        ttk.Label(left, text="Параметры расчёта",
-                  font=("", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        # ===== Левая панель =====
+        left = QWidget()
+        left.setFixedWidth(340)
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Вариант 1–30
-        ttk.Label(left, text="Вариант (1–30):").pack(anchor=tk.W)
-        self._var_num = tk.IntVar(value=1)
-        vcmd = (self.register(self._validate_int), "%P")
-        self._var_spin = ttk.Spinbox(left, from_=1, to=30, width=8,
-                                     textvariable=self._var_num,
-                                     validate="key", validatecommand=vcmd)
-        self._var_spin.pack(anchor=tk.W, pady=(0, 5))
-        self._var_num.trace_add("write", self._on_variant_changed)
+        # --- Параметры ---
+        grp_params = QGroupBox("Параметры расчёта")
+        gl = QVBoxLayout(grp_params)
 
-        # Информация о варианте
-        self._info_text = tk.Text(left, width=38, height=12,
-                                  state=tk.DISABLED, wrap=tk.WORD)
-        self._info_text.pack(anchor=tk.W, pady=(0, 10))
+        gl.addWidget(QLabel("Вариант (1–30):"))
+        self._spin_var = QSpinBox()
+        self._spin_var.setRange(1, 30)
+        self._spin_var.setValue(1)
+        self._spin_var.valueChanged.connect(self._on_variant_changed)
+        gl.addWidget(self._spin_var)
 
-        # Эксцентриситет для 3D-графиков
-        ttk.Label(left, text="ε для 3D-графиков:").pack(anchor=tk.W)
-        self._eps_var = tk.DoubleVar(value=0.6)
-        ttk.Entry(left, textvariable=self._eps_var, width=10).pack(
-            anchor=tk.W, pady=(0, 5))
+        self._lbl_info = QTextEdit()
+        self._lbl_info.setReadOnly(True)
+        self._lbl_info.setMaximumHeight(170)
+        self._lbl_info.setStyleSheet("background: #f5f5f5; border: 1px solid #ccc;")
+        gl.addWidget(self._lbl_info)
 
-        # Размер сетки
-        ttk.Label(left, text="Размер сетки (N):").pack(anchor=tk.W)
-        self._grid_var = tk.IntVar(value=500)
-        ttk.Entry(left, textvariable=self._grid_var, width=10).pack(
-            anchor=tk.W, pady=(0, 10))
+        gl.addWidget(QLabel("ε для 3D-графиков:"))
+        self._spin_eps = QDoubleSpinBox()
+        self._spin_eps.setRange(0.01, 0.99)
+        self._spin_eps.setSingleStep(0.05)
+        self._spin_eps.setValue(0.6)
+        self._spin_eps.setDecimals(2)
+        gl.addWidget(self._spin_eps)
 
-        # Кнопки
-        self._btn_calc = ttk.Button(left, text="Рассчитать",
-                                    command=self._on_calculate)
-        self._btn_calc.pack(fill=tk.X, pady=(0, 5))
+        gl.addWidget(QLabel("Размер сетки N:"))
+        self._spin_grid = QSpinBox()
+        self._spin_grid.setRange(50, 1000)
+        self._spin_grid.setSingleStep(50)
+        self._spin_grid.setValue(500)
+        gl.addWidget(self._spin_grid)
 
-        self._btn_save = ttk.Button(left, text="Сохранить результаты",
-                                    command=self._on_save, state=tk.DISABLED)
-        self._btn_save.pack(fill=tk.X, pady=(0, 10))
+        left_layout.addWidget(grp_params)
 
-        # Лог
-        ttk.Label(left, text="Лог:").pack(anchor=tk.W)
-        self._log = tk.Text(left, width=38, height=8, state=tk.DISABLED,
-                            wrap=tk.WORD)
-        self._log.pack(anchor=tk.W, fill=tk.Y, expand=True)
+        # --- Кнопки ---
+        self._btn_calc = QPushButton("Рассчитать")
+        self._btn_calc.setMinimumHeight(40)
+        self._btn_calc.setStyleSheet(
+            "QPushButton { background: #2196F3; color: white; font-weight: bold; "
+            "border-radius: 4px; } "
+            "QPushButton:hover { background: #1976D2; } "
+            "QPushButton:disabled { background: #bbb; }"
+        )
+        self._btn_calc.clicked.connect(self._on_calculate)
+        left_layout.addWidget(self._btn_calc)
 
-        # --- Правая панель результатов ---
-        right = ttk.Frame(self, padding=5)
-        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        self._btn_save = QPushButton("Сохранить результаты")
+        self._btn_save.setMinimumHeight(34)
+        self._btn_save.setEnabled(False)
+        self._btn_save.clicked.connect(self._on_save)
+        left_layout.addWidget(self._btn_save)
 
-        self._tabs = ttk.Notebook(right)
-        self._tabs.pack(fill=tk.BOTH, expand=True)
+        # --- Прогресс ---
+        grp_progress = QGroupBox("Прогресс")
+        pl = QVBoxLayout(grp_progress)
 
-        # Вкладки с графиками
+        pl.addWidget(QLabel("Этап 1: Решение Рейнольдса"))
+        self._bar_stage1 = QProgressBar()
+        self._bar_stage1.setTextVisible(True)
+        self._bar_stage1.setFormat("%p%")
+        pl.addWidget(self._bar_stage1)
+
+        pl.addWidget(QLabel("Этап 2: Перебор по ε"))
+        self._bar_stage2 = QProgressBar()
+        self._bar_stage2.setTextVisible(True)
+        self._bar_stage2.setFormat("%p%")
+        pl.addWidget(self._bar_stage2)
+
+        left_layout.addWidget(grp_progress)
+
+        # --- Лог ---
+        grp_log = QGroupBox("Лог")
+        ll = QVBoxLayout(grp_log)
+        self._log = QTextEdit()
+        self._log.setReadOnly(True)
+        self._log.setFont(QFont("Consolas", 9))
+        self._log.setStyleSheet("background: #1e1e1e; color: #d4d4d4;")
+        ll.addWidget(self._log)
+        left_layout.addWidget(grp_log, stretch=1)
+
+        main_layout.addWidget(left)
+
+        # ===== Правая панель (вкладки) =====
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(
+            "QTabBar::tab { min-width: 120px; padding: 6px 12px; }"
+        )
+
         self._tab_frames = {}
-        for tab_name in ["Поле давления", "Зазор",
-                         "F(ε)", "μ(ε)", "Q(ε)"]:
-            frame = ttk.Frame(self._tabs)
-            self._tabs.add(frame, text=tab_name)
-            self._tab_frames[tab_name] = frame
+        for name in ["Поле давления", "Зазор", "F(ε)", "μ(ε)", "Q(ε)", "Результаты"]:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(2, 2, 2, 2)
+            self._tabs.addTab(page, name)
+            self._tab_frames[name] = page_layout
 
-        # Вкладка с числовыми результатами
-        num_frame = ttk.Frame(self._tabs)
-        self._tabs.add(num_frame, text="Результаты")
-        self._tab_frames["Результаты"] = num_frame
-        self._result_text = tk.Text(num_frame, state=tk.DISABLED, wrap=tk.WORD)
-        self._result_text.pack(fill=tk.BOTH, expand=True)
+        # Текстовое поле на вкладке "Результаты"
+        self._result_text = QTextEdit()
+        self._result_text.setReadOnly(True)
+        self._result_text.setFont(QFont("Consolas", 10))
+        self._tab_frames["Результаты"].addWidget(self._result_text)
 
-        # Инициализация отображения варианта
-        self._on_variant_changed()
+        main_layout.addWidget(self._tabs, stretch=1)
+
+        # Переподключаем сигналы к реальным виджетам
+        self._reconnect_signals()
 
     # -----------------------------------------------------------------
-    #  Обновление инфо
+    #  Инфо о варианте
     # -----------------------------------------------------------------
-    def _on_variant_changed(self, *_args):
+    def _on_variant_changed(self):
         try:
-            v = self._var_num.get()
+            v = self._spin_var.value()
             p = get_variant(v)
         except Exception:
             return
         dep = DEPRESSION_TYPES[p["depression_type"]]
         lines = [
-            f"Вариант {v}",
-            f"Геометрия: {p['geometry_key']}",
-            f"  R = {p['R']} м",
-            f"  c = {p['c']} м",
-            f"  L = {p['L']} м",
+            f"<b>Вариант {v}</b>",
+            f"Геометрия: <b>{p['geometry_key']}</b>",
+            f"  R = {p['R']} м &nbsp; c = {p['c']} м &nbsp; L = {p['L']} м",
             "",
-            f"Тип {p['depression_type']}: {p['depression_name']}",
+            f"Тип {p['depression_type']}: <b>{p['depression_name']}</b>",
         ]
         if "r0" in dep:
             lines.append(f"  r0 = {dep['r0']} м")
         else:
-            lines.append(f"  a = {dep.get('a', '—')} м")
-            lines.append(f"  b = {dep.get('b', '—')} м")
+            lines.append(f"  a = {dep.get('a', '—')} м &nbsp; b = {dep.get('b', '—')} м")
         lines.append(f"  h_p = {dep['h_p']*1e6:.0f} мкм")
+        self._lbl_info.setHtml("<br>".join(lines))
 
-        self._info_text.config(state=tk.NORMAL)
-        self._info_text.delete("1.0", tk.END)
-        self._info_text.insert(tk.END, "\n".join(lines))
-        self._info_text.config(state=tk.DISABLED)
+    # -----------------------------------------------------------------
+    #  Лог
+    # -----------------------------------------------------------------
+    def _append_log(self, msg):
+        self._log.append(msg)
 
     # -----------------------------------------------------------------
     #  Расчёт
     # -----------------------------------------------------------------
-    def _log_msg(self, msg):
-        self._log.config(state=tk.NORMAL)
-        self._log.insert(tk.END, msg + "\n")
-        self._log.see(tk.END)
-        self._log.config(state=tk.DISABLED)
-
     def _on_calculate(self):
         if self._calculating:
             return
-        try:
-            v = self._var_num.get()
-            eps = self._eps_var.get()
-            grid = self._grid_var.get()
-            if not (0 < eps < 1):
-                raise ValueError("ε должен быть в (0, 1)")
-            if not (50 <= grid <= 1000):
-                raise ValueError("Размер сетки от 50 до 1000")
-        except Exception as e:
-            messagebox.showerror("Ошибка ввода", str(e))
-            return
+
+        v = self._spin_var.value()
+        eps = self._spin_eps.value()
+        grid = self._spin_grid.value()
 
         self._calculating = True
-        self._btn_calc.config(state=tk.DISABLED)
-        self._btn_save.config(state=tk.DISABLED)
-        self._log.config(state=tk.NORMAL)
-        self._log.delete("1.0", tk.END)
-        self._log.config(state=tk.DISABLED)
+        self._btn_calc.setEnabled(False)
+        self._btn_save.setEnabled(False)
+        self._log.clear()
+        self._bar_stage1.setValue(0)
+        self._bar_stage2.setValue(0)
+        self._stage1_result = None
+        self._full_result = None
 
         params = get_variant(v)
         self._params = params
 
-        def progress(msg):
-            self.after(0, self._log_msg, msg)
+        def progress_cb(event, value):
+            if event == "log":
+                self._signals.log.emit(str(value))
+            elif event == "stage1_start":
+                self._signals.stage1_progress.emit(0)
+            elif event == "stage1_progress":
+                self._signals.stage1_progress.emit(int(value))
+            elif event == "stage2_start":
+                self._signals.stage2_progress.emit(0)
+            elif event == "stage2_progress":
+                self._signals.stage2_progress.emit(int(value))
 
         def worker():
             try:
-                progress(f"Вариант {v}: {params['depression_name']}")
-                progress(f"Сетка {grid}×{grid}, ε_3D = {eps}")
-                result = run_full_calculation(
-                    params, epsilon_3d=eps,
-                    num_phi=grid, num_Z=grid,
-                    progress_callback=progress)
-                self._result = result
-                self.after(0, self._show_results)
+                self._signals.log.emit(
+                    f"Вариант {v}: {params['depression_name']}")
+                self._signals.log.emit(
+                    f"Сетка {grid}×{grid}, ε_3D = {eps}")
+
+                # ЭТАП 1
+                s1 = run_stage1_3d(params, epsilon_3d=eps,
+                                   num_phi=grid, num_Z=grid,
+                                   progress_callback=progress_cb)
+                self._signals.stage1_done.emit(s1)
+
+                # ЭТАП 2
+                full = run_stage2_epsilon_sweep(
+                    params, s1, n_jobs=-1,
+                    progress_callback=progress_cb)
+                self._signals.stage2_done.emit(full)
+
             except Exception as exc:
-                self.after(0, lambda: messagebox.showerror("Ошибка расчёта",
-                                                           str(exc)))
-            finally:
-                self.after(0, self._calc_done)
+                self._signals.error.emit(str(exc))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _calc_done(self):
-        self._calculating = False
-        self._btn_calc.config(state=tk.NORMAL)
-        if self._result is not None:
-            self._btn_save.config(state=tk.NORMAL)
+    # -----------------------------------------------------------------
+    #  Обработка результатов
+    # -----------------------------------------------------------------
+    def _embed_figure(self, tab_name, fig):
+        """Вставляет matplotlib Figure во вкладку, заменяя старый canvas."""
+        layout = self._tab_frames[tab_name]
+        # Очищаем
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        canvas = FigureCanvas(fig)
+        layout.addWidget(canvas)
+        canvas.draw()
 
-    # -----------------------------------------------------------------
-    #  Отображение результатов
-    # -----------------------------------------------------------------
-    def _show_results(self):
-        r = self._result
+    def _on_stage1_done(self, s1):
+        """Вызывается когда 3D-поля готовы — сразу показываем графики."""
+        self._stage1_result = s1
         dep_name = self._params["depression_name"]
 
-        # Очищаем старые canvas'ы
-        for name, frame in self._tab_frames.items():
-            if name == "Результаты":
-                continue
-            for w in frame.winfo_children():
-                w.destroy()
+        self._embed_figure("Поле давления", plot_pressure_3d(s1, dep_name))
+        self._embed_figure("Зазор", plot_clearance_3d(s1, dep_name))
+        self._tabs.setCurrentIndex(0)  # Переключаем на вкладку давления
 
-        # Графики
-        plots = [
-            ("Поле давления", plot_pressure_3d),
-            ("Зазор", plot_clearance_3d),
-            ("F(ε)", plot_F_vs_epsilon),
-            ("μ(ε)", plot_mu_vs_epsilon),
-            ("Q(ε)", plot_Q_vs_epsilon),
-        ]
-        for tab_name, plot_fn in plots:
-            fig = plot_fn(r, dep_name)
-            frame = self._tab_frames[tab_name]
-            canvas = FigureCanvasTkAgg(fig, master=frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # Числовые результаты (частичные)
+        eps_3d = self._spin_eps.value()
+        text = (
+            f"=== Результаты при ε = {eps_3d} ===\n\n"
+            f"Без углублений:\n"
+            f"  F  = {s1['F_nd_3d']:.2f} Н\n"
+            f"  μ  = {s1['mu_nd_3d']:.6f}\n"
+            f"  Q  = {s1['Q_nd_3d']:.6f} л/с\n\n"
+            f"{dep_name}:\n"
+            f"  F  = {s1['F_dep_3d']:.2f} Н\n"
+            f"  μ  = {s1['mu_dep_3d']:.6f}\n"
+            f"  Q  = {s1['Q_dep_3d']:.6f} л/с\n\n"
+            f"Перебор по ε — ожидание..."
+        )
+        self._result_text.setPlainText(text)
 
-        # Числовые результаты
-        eps_3d = self._eps_var.get()
+        self._append_log("3D-графики построены. Запуск перебора по ε...")
+
+    def _on_stage2_done(self, full):
+        """Вызывается когда перебор по ε завершён."""
+        self._full_result = full
+        dep_name = self._params["depression_name"]
+
+        self._embed_figure("F(ε)", plot_F_vs_epsilon(full, dep_name))
+        self._embed_figure("μ(ε)", plot_mu_vs_epsilon(full, dep_name))
+        self._embed_figure("Q(ε)", plot_Q_vs_epsilon(full, dep_name))
+
+        # Полные числовые результаты
+        eps_3d = self._spin_eps.value()
         lines = [
             f"=== Результаты при ε = {eps_3d} ===",
             "",
             "Без углублений:",
-            f"  F  = {r['F_nd_3d']:.2f} Н",
-            f"  μ  = {r['mu_nd_3d']:.6f}",
-            f"  Q  = {r['Q_nd_3d']:.6f} л/с",
+            f"  F  = {full['F_nd_3d']:.2f} Н",
+            f"  μ  = {full['mu_nd_3d']:.6f}",
+            f"  Q  = {full['Q_nd_3d']:.6f} л/с",
             "",
             f"{dep_name}:",
-            f"  F  = {r['F_dep_3d']:.2f} Н",
-            f"  μ  = {r['mu_dep_3d']:.6f}",
-            f"  Q  = {r['Q_dep_3d']:.6f} л/с",
+            f"  F  = {full['F_dep_3d']:.2f} Н",
+            f"  μ  = {full['mu_dep_3d']:.6f}",
+            f"  Q  = {full['Q_dep_3d']:.6f} л/с",
             "",
-            "=" * 40,
+            "=" * 50,
             "",
             "Зависимость от ε:",
-            f"{'ε':>6}  {'F_nd':>10}  {'F_dep':>10}  {'μ_nd':>10}  {'μ_dep':>10}  {'Q_nd':>10}  {'Q_dep':>10}",
+            f"{'ε':>6}  {'F_nd':>10}  {'F_dep':>10}  "
+            f"{'μ_nd':>10}  {'μ_dep':>10}  {'Q_nd':>10}  {'Q_dep':>10}",
         ]
-        for i, eps in enumerate(r["epsilon_values"]):
+        for i, eps in enumerate(full["epsilon_values"]):
             lines.append(
-                f"{eps:6.3f}  {r['F_nd'][i]:10.2f}  {r['F_dep'][i]:10.2f}  "
-                f"{r['mu_nd'][i]:10.6f}  {r['mu_dep'][i]:10.6f}  "
-                f"{r['Q_nd'][i]:10.6f}  {r['Q_dep'][i]:10.6f}"
+                f"{eps:6.3f}  {full['F_nd'][i]:10.2f}  {full['F_dep'][i]:10.2f}  "
+                f"{full['mu_nd'][i]:10.6f}  {full['mu_dep'][i]:10.6f}  "
+                f"{full['Q_nd'][i]:10.6f}  {full['Q_dep'][i]:10.6f}"
             )
+        self._result_text.setPlainText("\n".join(lines))
 
-        self._result_text.config(state=tk.NORMAL)
-        self._result_text.delete("1.0", tk.END)
-        self._result_text.insert(tk.END, "\n".join(lines))
-        self._result_text.config(state=tk.DISABLED)
+        self._calculating = False
+        self._btn_calc.setEnabled(True)
+        self._btn_save.setEnabled(True)
+        self._append_log("Все графики готовы.")
+
+    def _on_error(self, msg):
+        self._calculating = False
+        self._btn_calc.setEnabled(True)
+        QMessageBox.critical(self, "Ошибка расчёта", msg)
 
     # -----------------------------------------------------------------
     #  Сохранение
     # -----------------------------------------------------------------
     def _on_save(self):
-        if self._result is None:
+        if self._full_result is None:
             return
-        folder = filedialog.askdirectory(title="Выберите папку для сохранения")
+        folder = QFileDialog.getExistingDirectory(self, "Выберите папку")
         if not folder:
             return
         try:
-            save_results(self._result, self._params, folder)
-            self._log_msg(f"Сохранено в {folder}")
+            save_results(self._full_result, self._params, folder)
+            self._append_log(f"Сохранено в {folder}")
         except Exception as e:
-            messagebox.showerror("Ошибка сохранения", str(e))
+            QMessageBox.critical(self, "Ошибка сохранения", str(e))
 
-    # -----------------------------------------------------------------
-    #  Валидация
-    # -----------------------------------------------------------------
-    @staticmethod
-    def _validate_int(value):
-        if value == "":
-            return True
-        try:
-            int(value)
-            return True
-        except ValueError:
-            return False
+
+def run_app():
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = BearingApp()
+    window.show()
+    sys.exit(app.exec_())
