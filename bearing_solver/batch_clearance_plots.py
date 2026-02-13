@@ -44,11 +44,6 @@ def plot_clearance_2d_section(params, epsilon=0.6, num_phi=500, num_Z=500):
             label=params["depression_name"], color="red", linewidth=1.5)
     ax.set_xlabel("φ, рад")
     ax.set_ylabel("H")
-    ax.set_title(
-        f"Зазор H(φ) при Z=0 — "
-        f"тип {params['depression_type']}: {params['depression_name']} "
-        f"(геометрия {params['geometry_key']})"
-    )
     ax.legend()
     ax.grid(True)
     fig.tight_layout()

@@ -81,13 +81,23 @@ def _depression_elliptic_cylinder_rounded(H, H_p, A_nd, B_nd, delta_phi, delta_Z
     H[mask_outer] += H_p * np.cos(np.pi * (r[mask_outer] - 0.7) / 0.6) ** 2
 
 
-def _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z, R_bearing, r0):
-    """Тип 5. Сферическая шапка (a = b = r0)."""
-    r0_nd = r0 / R_bearing          # безразмерный радиус основания
-    rho = np.sqrt(delta_phi ** 2 + delta_Z ** 2)
-    R_s = (r0_nd ** 2 + H_p ** 2) / (2 * H_p)
-    mask = rho <= r0_nd
-    H[mask] += np.sqrt(R_s ** 2 - rho[mask] ** 2) - np.sqrt(R_s ** 2 - r0_nd ** 2)
+def _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z,
+                              R_bearing, r0, c, L):
+    """Тип 5. Сферическая шапка (a = b = r0).
+
+    Вычисление ведётся в физических координатах (метры), чтобы
+    избежать рассогласования масштабов (r0/R vs h_p/c).
+    """
+    h_p = H_p * c                            # глубина в метрах
+    R_s = (r0 ** 2 + h_p ** 2) / (2 * h_p)  # радиус сферы, м
+
+    d_phi_m = delta_phi * R_bearing          # расстояние по φ, м
+    d_Z_m = delta_Z * (L / 2)               # расстояние по Z, м
+    rho_sq = d_phi_m ** 2 + d_Z_m ** 2
+
+    mask = rho_sq <= r0 ** 2
+    H[mask] += (np.sqrt(R_s ** 2 - rho_sq[mask])
+                - np.sqrt(R_s ** 2 - r0 ** 2)) / c
 
 
 def _depression_conical(H, H_p, A_nd, B_nd, delta_phi, delta_Z):
@@ -172,7 +182,8 @@ def create_H_with_depressions(H0, params, Phi_mesh, Z_mesh, phi_c_flat, Z_c_flat
             _depression_elliptic_cylinder_rounded(H, H_p, A_nd, B_nd, delta_phi, delta_Z)
         elif dep_type == 5:
             _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z,
-                                      params["R"], params["a"])
+                                      params["R"], params["a"],
+                                      params["c"], params["L"])
         elif dep_type == 6:
             _depression_conical(H, H_p, A_nd, B_nd, delta_phi, delta_Z)
         elif dep_type == 7:

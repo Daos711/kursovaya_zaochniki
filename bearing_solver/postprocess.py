@@ -284,22 +284,24 @@ def plot_3d_fields(result, dep_name="с углублениями"):
         ax_H = fig.add_subplot(2, 2, idx_H, projection="3d")
         surf_H = ax_H.plot_surface(Phi, Z, H_case, cmap="viridis",
                                     rcount=100, ccount=100)
-        fig.colorbar(surf_H, ax=ax_H, shrink=0.5, aspect=10)
-        ax_H.set_xlabel("φ, рад", fontsize=10)
-        ax_H.set_ylabel("Z", fontsize=10)
-        ax_H.set_zlabel("H", fontsize=10)
-        ax_H.set_title(f"Зазор H — {title}", fontsize=11)
+        fig.colorbar(surf_H, ax=ax_H, shrink=0.4, aspect=10, pad=0.12)
+        ax_H.set_xlabel("φ, рад", fontsize=9, labelpad=2)
+        ax_H.set_ylabel("Z", fontsize=9, labelpad=2)
+        ax_H.set_zlabel("H", fontsize=9, labelpad=2)
+        ax_H.tick_params(labelsize=7, pad=1)
+        ax_H.set_title(f"Зазор H — {title}", fontsize=11, pad=12)
 
         ax_P = fig.add_subplot(2, 2, idx_P, projection="3d")
         surf_P = ax_P.plot_surface(Phi, Z, P_case, cmap="plasma",
                                     rcount=100, ccount=100)
-        fig.colorbar(surf_P, ax=ax_P, shrink=0.5, aspect=10)
-        ax_P.set_xlabel("φ, рад", fontsize=10)
-        ax_P.set_ylabel("Z", fontsize=10)
-        ax_P.set_zlabel("P", fontsize=10)
-        ax_P.set_title(f"Давление P — {title}", fontsize=11)
+        fig.colorbar(surf_P, ax=ax_P, shrink=0.4, aspect=10, pad=0.12)
+        ax_P.set_xlabel("φ, рад", fontsize=9, labelpad=2)
+        ax_P.set_ylabel("Z", fontsize=9, labelpad=2)
+        ax_P.set_zlabel("P", fontsize=9, labelpad=2)
+        ax_P.tick_params(labelsize=7, pad=1)
+        ax_P.set_title(f"Давление P — {title}", fontsize=11, pad=12)
 
-    fig.tight_layout()
+    fig.subplots_adjust(top=0.95, bottom=0.03, hspace=0.25, wspace=0.15)
     return fig
 
 
