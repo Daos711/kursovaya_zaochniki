@@ -231,53 +231,60 @@ def run_stage2_epsilon_sweep(params, stage1_result, n_jobs=-1,
 #  Построение графиков (возвращают Figure)
 # -------------------------------------------------------------------
 
-def plot_pressure_3d(result, dep_name="с углублениями"):
-    """3D-поверхность поля давления: без и с углублениями."""
-    fig = Figure(figsize=(14, 6))
-    Phi = result["Phi_mesh"]
-    Z = result["Z_mesh"]
+def plot_pressure_2d_section(result, dep_name="с углублениями"):
+    """2D-график давления P(φ) при Z = 0 — сечение по середине."""
+    fig = Figure(figsize=(10, 6))
+    ax = fig.add_subplot(111)
 
-    ax1 = fig.add_subplot(1, 2, 1, projection="3d")
-    ax1.plot_surface(Phi, Z, result["P_nd_3d"], cmap="plasma",
-                     rcount=100, ccount=100)
-    ax1.set_xlabel("φ, рад")
-    ax1.set_ylabel("Z")
-    ax1.set_zlabel("P")
-    ax1.set_title("Без углублений")
+    phi_1D = result["phi_1D"]
+    Z_1D = result["Z_1D"]
+    Z_idx = np.argmin(np.abs(Z_1D - 0.0))
 
-    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
-    ax2.plot_surface(Phi, Z, result["P_dep_3d"], cmap="plasma",
-                     rcount=100, ccount=100)
-    ax2.set_xlabel("φ, рад")
-    ax2.set_ylabel("Z")
-    ax2.set_zlabel("P")
-    ax2.set_title(dep_name)
-
+    ax.plot(phi_1D, result["P_nd_3d"][Z_idx, :],
+            label="Без углублений", color="blue", linewidth=1.5)
+    ax.plot(phi_1D, result["P_dep_3d"][Z_idx, :],
+            label=dep_name, color="red", linewidth=1.5)
+    ax.set_xlabel("φ, рад")
+    ax.set_ylabel("P")
+    ax.set_title("Поле давления P(φ) при Z = 0")
+    ax.legend()
+    ax.grid(True)
     fig.tight_layout()
     return fig
 
 
-def plot_clearance_3d(result, dep_name="с углублениями"):
-    """3D-поверхность зазора H: без и с углублениями."""
-    fig = Figure(figsize=(14, 6))
+def plot_3d_fields(result, dep_name="с углублениями"):
+    """2×2: зазор H и давление P, без и с углублениями."""
+    fig = Figure(figsize=(16, 14))
     Phi = result["Phi_mesh"]
     Z = result["Z_mesh"]
 
-    ax1 = fig.add_subplot(1, 2, 1, projection="3d")
-    ax1.plot_surface(Phi, Z, result["H_nd_3d"], cmap="viridis",
-                     rcount=100, ccount=100)
-    ax1.set_xlabel("φ, рад")
-    ax1.set_ylabel("Z")
-    ax1.set_zlabel("H")
-    ax1.set_title("Без углублений")
+    cases = [
+        ("Без углублений", result["H_nd_3d"], result["P_nd_3d"]),
+        (dep_name,         result["H_dep_3d"], result["P_dep_3d"]),
+    ]
 
-    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
-    ax2.plot_surface(Phi, Z, result["H_dep_3d"], cmap="viridis",
-                     rcount=100, ccount=100)
-    ax2.set_xlabel("φ, рад")
-    ax2.set_ylabel("Z")
-    ax2.set_zlabel("H")
-    ax2.set_title(dep_name)
+    for i, (title, H_case, P_case) in enumerate(cases):
+        idx_H = 2 * i + 1
+        idx_P = 2 * i + 2
+
+        ax_H = fig.add_subplot(2, 2, idx_H, projection="3d")
+        surf_H = ax_H.plot_surface(Phi, Z, H_case, cmap="viridis",
+                                    rcount=100, ccount=100)
+        fig.colorbar(surf_H, ax=ax_H, shrink=0.5, aspect=10)
+        ax_H.set_xlabel("φ, рад", fontsize=10)
+        ax_H.set_ylabel("Z", fontsize=10)
+        ax_H.set_zlabel("H", fontsize=10)
+        ax_H.set_title(f"Зазор H — {title}", fontsize=11)
+
+        ax_P = fig.add_subplot(2, 2, idx_P, projection="3d")
+        surf_P = ax_P.plot_surface(Phi, Z, P_case, cmap="plasma",
+                                    rcount=100, ccount=100)
+        fig.colorbar(surf_P, ax=ax_P, shrink=0.5, aspect=10)
+        ax_P.set_xlabel("φ, рад", fontsize=10)
+        ax_P.set_ylabel("Z", fontsize=10)
+        ax_P.set_zlabel("P", fontsize=10)
+        ax_P.set_title(f"Давление P — {title}", fontsize=11)
 
     fig.tight_layout()
     return fig
@@ -337,8 +344,8 @@ def save_results(result, params, folder):
     os.makedirs(folder, exist_ok=True)
     dep_name = params["depression_name"]
 
-    for name, plot_fn in [("pressure_3d", plot_pressure_3d),
-                           ("clearance_3d", plot_clearance_3d),
+    for name, plot_fn in [("pressure_2d_Z0", plot_pressure_2d_section),
+                           ("fields_3d", plot_3d_fields),
                            ("F_vs_eps", plot_F_vs_epsilon),
                            ("mu_vs_eps", plot_mu_vs_epsilon),
                            ("Q_vs_eps", plot_Q_vs_epsilon)]:

@@ -23,7 +23,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from .variants import get_variant, GEOMETRIES, DEPRESSION_TYPES
 from .postprocess import (
     run_stage1_3d, run_stage2_epsilon_sweep,
-    plot_pressure_3d, plot_clearance_3d,
+    plot_pressure_2d_section, plot_3d_fields,
     plot_F_vs_epsilon, plot_mu_vs_epsilon,
     plot_Q_vs_epsilon, save_results,
 )
@@ -193,7 +193,7 @@ class BearingApp(QMainWindow):
         )
 
         self._tab_frames = {}
-        for name in ["Поле давления", "Зазор", "F(ε)", "μ(ε)", "Q(ε)", "Результаты"]:
+        for name in ["P(φ) при Z=0", "3D поля", "F(ε)", "μ(ε)", "Q(ε)", "Результаты"]:
             page = QWidget()
             page_layout = QVBoxLayout(page)
             page_layout.setContentsMargins(2, 2, 2, 2)
@@ -321,9 +321,10 @@ class BearingApp(QMainWindow):
         self._stage1_result = s1
         dep_name = self._params["depression_name"]
 
-        self._embed_figure("Поле давления", plot_pressure_3d(s1, dep_name))
-        self._embed_figure("Зазор", plot_clearance_3d(s1, dep_name))
-        self._tabs.setCurrentIndex(0)  # Переключаем на вкладку давления
+        self._embed_figure("P(φ) при Z=0",
+                           plot_pressure_2d_section(s1, dep_name))
+        self._embed_figure("3D поля", plot_3d_fields(s1, dep_name))
+        self._tabs.setCurrentIndex(0)  # Переключаем на 2D-давление
 
         # Числовые результаты (частичные)
         eps_3d = self._spin_eps.value()
