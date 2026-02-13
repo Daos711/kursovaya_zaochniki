@@ -282,7 +282,7 @@ def plot_3d_fields(result, dep_name="с углублениями"):
 
         ax_H = fig.add_subplot(2, 2, idx_H, projection="3d")
         surf_H = ax_H.plot_surface(Phi, Z, H_case, cmap="viridis",
-                                    rcount=100, ccount=100)
+                                    rcount=500, ccount=500)
         fig.colorbar(surf_H, ax=ax_H, shrink=0.4, aspect=10, pad=0.12)
         ax_H.set_xlabel("φ, рад", fontsize=9, labelpad=2)
         ax_H.set_ylabel("Z", fontsize=9, labelpad=2)
@@ -291,7 +291,7 @@ def plot_3d_fields(result, dep_name="с углублениями"):
 
         ax_P = fig.add_subplot(2, 2, idx_P, projection="3d")
         surf_P = ax_P.plot_surface(Phi, Z, P_case, cmap="plasma",
-                                    rcount=100, ccount=100)
+                                    rcount=500, ccount=500)
         fig.colorbar(surf_P, ax=ax_P, shrink=0.4, aspect=10, pad=0.12)
         ax_P.set_xlabel("φ, рад", fontsize=9, labelpad=2)
         ax_P.set_ylabel("Z", fontsize=9, labelpad=2)
@@ -356,7 +356,7 @@ def _plot_3d_field(result, key_smooth, key_dep, cmap, zlabel):
     for idx, key in enumerate([key_smooth, key_dep], start=1):
         ax = fig.add_subplot(1, 2, idx, projection="3d")
         surf = ax.plot_surface(Phi, Z, result[key], cmap=cmap,
-                               rcount=100, ccount=100)
+                               rcount=500, ccount=500)
         fig.colorbar(surf, ax=ax, shrink=0.45, aspect=10, pad=0.12)
         ax.set_xlabel("φ, рад", fontsize=9, labelpad=2)
         ax.set_ylabel("Z", fontsize=9, labelpad=2)
