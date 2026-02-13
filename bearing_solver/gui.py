@@ -36,7 +36,9 @@ from .postprocess import (
 class WorkerSignals(QObject):
     log = pyqtSignal(str)
     stage1_progress = pyqtSignal(int)
+    stage1_text = pyqtSignal(str)
     stage2_progress = pyqtSignal(int)
+    stage2_text = pyqtSignal(str)
     stage1_done = pyqtSignal(dict)
     stage2_done = pyqtSignal(dict)
     error = pyqtSignal(str)
@@ -88,7 +90,15 @@ class BearingApp(QMainWindow):
         except TypeError:
             pass
         self._signals.stage1_progress.connect(self._bar_stage1.setValue)
+        self._signals.stage1_text.connect(self._set_stage1_text)
         self._signals.stage2_progress.connect(self._bar_stage2.setValue)
+        self._signals.stage2_text.connect(self._set_stage2_text)
+
+    def _set_stage1_text(self, text):
+        self._bar_stage1.setFormat(f"{text}  %p%")
+
+    def _set_stage2_text(self, text):
+        self._bar_stage2.setFormat(f"{text}  %p%")
 
     # -----------------------------------------------------------------
     #  UI
@@ -257,7 +267,9 @@ class BearingApp(QMainWindow):
         self._btn_save.setEnabled(False)
         self._log.clear()
         self._bar_stage1.setValue(0)
+        self._bar_stage1.setFormat("Ожидание...  %p%")
         self._bar_stage2.setValue(0)
+        self._bar_stage2.setFormat("Ожидание...  %p%")
         self._stage1_result = None
         self._full_result = None
 
@@ -267,14 +279,14 @@ class BearingApp(QMainWindow):
         def progress_cb(event, value):
             if event == "log":
                 self._signals.log.emit(str(value))
-            elif event == "stage1_start":
-                self._signals.stage1_progress.emit(0)
             elif event == "stage1_progress":
                 self._signals.stage1_progress.emit(int(value))
-            elif event == "stage2_start":
-                self._signals.stage2_progress.emit(0)
+            elif event == "stage1_text":
+                self._signals.stage1_text.emit(str(value))
             elif event == "stage2_progress":
                 self._signals.stage2_progress.emit(int(value))
+            elif event == "stage2_text":
+                self._signals.stage2_text.emit(str(value))
 
         def worker():
             try:

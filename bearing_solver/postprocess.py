@@ -107,7 +107,8 @@ def run_stage1_3d(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
     sin_phi = np.sin(Phi_mesh)
 
     if progress_callback:
-        progress_callback("stage1_start", 0)
+        progress_callback("stage1_text", "Формирование зазора...")
+        progress_callback("stage1_progress", 5)
 
     # Формирование зазора
     H0_3d = base_clearance(epsilon_3d, Phi_mesh)
@@ -115,21 +116,25 @@ def run_stage1_3d(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
     H_dep_3d = create_H_with_depressions(H0_3d, params, Phi_mesh, Z_mesh,
                                           phi_c_flat, Z_c_flat)
     if progress_callback:
-        progress_callback("log", "Зазор сформирован, решаем Рейнольдса...")
+        progress_callback("log", "Зазор сформирован")
+        progress_callback("stage1_text", "Рейнольдс без углублений...")
+        progress_callback("stage1_progress", 10)
 
     # Решаем без углублений
     P_nd_3d, _, iter_nd = solve_reynolds_gauss_seidel_numba(
         H_nd_3d, d_phi, d_Z, R, L, omega=1.5, max_iter=50000)
     if progress_callback:
         progress_callback("log", f"Без углублений: {iter_nd} итераций")
-        progress_callback("stage1_progress", 40)
+        progress_callback("stage1_text", "Рейнольдс с углублениями...")
+        progress_callback("stage1_progress", 50)
 
     # Решаем с углублениями
     P_dep_3d, _, iter_dep = solve_reynolds_gauss_seidel_numba(
         H_dep_3d, d_phi, d_Z, R, L, omega=1.5, max_iter=50000)
     if progress_callback:
         progress_callback("log", f"С углублениями: {iter_dep} итераций")
-        progress_callback("stage1_progress", 80)
+        progress_callback("stage1_text", "Вычисление F, μ, Q...")
+        progress_callback("stage1_progress", 90)
 
     # Числовые результаты при epsilon_3d
     Fr = _trapz(_trapz(P_nd_3d * cos_phi, phi_1D, axis=1), Z_1D)
@@ -153,6 +158,7 @@ def run_stage1_3d(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
     Q_dep_3d = U * c * R * _trapz(_trapz(q_i, phi_1D, axis=1), Z_1D) * 1000
 
     if progress_callback:
+        progress_callback("stage1_text", "Готово")
         progress_callback("stage1_progress", 100)
 
     return {
@@ -174,7 +180,9 @@ def run_stage1_3d(params, epsilon_3d=0.6, num_phi=500, num_Z=500,
 def run_stage2_epsilon_sweep(params, stage1_result, n_jobs=-1,
                              progress_callback=None):
     """
-    Параллельный перебор по ε. Вызывается после stage1.
+    Перебор по ε с поточечным отчётом прогресса.
+    Использует joblib для параллелизации, но отчитывается
+    после завершения каждой точки.
     """
     phi_1D = stage1_result["phi_1D"]
     Z_1D = stage1_result["Z_1D"]
@@ -186,21 +194,21 @@ def run_stage2_epsilon_sweep(params, stage1_result, n_jobs=-1,
     Z_c_flat = stage1_result["Z_c_flat"]
 
     epsilon_values = np.linspace(0.05, 0.8, 15)
+    n_eps = len(epsilon_values)
 
     if progress_callback:
-        progress_callback("stage2_start", 0)
-        progress_callback("log", "Перебор по ε (15 точек)...")
+        progress_callback("stage2_progress", 0)
+        progress_callback("stage2_text", "Перебор по ε...")
+        progress_callback("log", f"Перебор по ε ({n_eps} точек)...")
 
-    results_eps = Parallel(n_jobs=n_jobs, verbose=0)(
-        delayed(_compute_for_epsilon)(
-            eps, params, phi_1D, Z_1D, Phi_mesh, Z_mesh,
-            d_phi, d_Z, phi_c_flat, Z_c_flat)
-        for eps in epsilon_values
-    )
-
+    # Последовательный расчёт с отчётом прогресса по каждой точке
     F_nd_list, mu_nd_list, Q_nd_list = [], [], []
     F_dep_list, mu_dep_list, Q_dep_list = [], [], []
-    for res in results_eps:
+
+    for k, eps in enumerate(epsilon_values):
+        res = _compute_for_epsilon(
+            eps, params, phi_1D, Z_1D, Phi_mesh, Z_mesh,
+            d_phi, d_Z, phi_c_flat, Z_c_flat)
         _, f_nd, m_nd, q_nd, f_dep, m_dep, q_dep = res
         F_nd_list.append(f_nd)
         mu_nd_list.append(m_nd)
@@ -209,8 +217,13 @@ def run_stage2_epsilon_sweep(params, stage1_result, n_jobs=-1,
         mu_dep_list.append(m_dep)
         Q_dep_list.append(q_dep)
 
+        if progress_callback:
+            pct = int(100 * (k + 1) / n_eps)
+            progress_callback("stage2_progress", pct)
+            progress_callback("stage2_text", f"ε = {eps:.3f}  ({k+1}/{n_eps})")
+
     if progress_callback:
-        progress_callback("stage2_progress", 100)
+        progress_callback("stage2_text", "Готово")
         progress_callback("log", "Расчёт завершён.")
 
     # Объединяем с результатами stage1
