@@ -22,7 +22,7 @@ from bearing_solver.geometry import (
 )
 
 
-def plot_clearance_2d_section(params, epsilon=0.6, num_phi=500, num_Z=500):
+def plot_clearance_2d_section(params, epsilon=0.6, num_phi=5000, num_Z=500):
     """
     Строит 2D-график H(φ) при Z=0 — сечение зазора
     с углублениями и без.
