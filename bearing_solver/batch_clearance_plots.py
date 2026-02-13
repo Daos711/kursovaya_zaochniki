@@ -51,7 +51,7 @@ def plot_clearance_2d_section(params, epsilon=0.6, num_phi=5000, num_Z=500):
 
 
 def main():
-    output_dir = sys.argv[1] if len(sys.argv) > 1 else "clearance_plots"
+    output_dir = sys.argv[1] if len(sys.argv) > 1 else "figures"
     os.makedirs(output_dir, exist_ok=True)
 
     for dep_type in range(1, 11):
@@ -61,10 +61,7 @@ def main():
         print(f"Тип {dep_type:2d}: {params['depression_name']}...", end=" ")
 
         fig = plot_clearance_2d_section(params)
-        safe_name = (params['depression_name']
-                     .replace(" ", "_").replace(".", "")
-                     .replace("(", "").replace(")", ""))
-        filename = f"clearance_type_{dep_type:02d}_{safe_name}.png"
+        filename = f"clearance_type_{dep_type:02d}.png"
         fig.savefig(os.path.join(output_dir, filename), dpi=150)
         print("OK")
 

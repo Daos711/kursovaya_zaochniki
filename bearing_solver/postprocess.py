@@ -347,29 +347,21 @@ def plot_Q_vs_epsilon(result, dep_name="с углублениями"):
     return fig
 
 
-def _plot_3d_pair(result, H_key, P_key):
-    """1×2: зазор H и давление P для одного случая (для сохранения)."""
+def _plot_3d_field(result, key_smooth, key_dep, cmap, zlabel):
+    """1×2: одно поле (H или P), без углублений и с углублениями."""
     fig = Figure(figsize=(14, 6))
     Phi = result["Phi_mesh"]
     Z = result["Z_mesh"]
 
-    ax_H = fig.add_subplot(1, 2, 1, projection="3d")
-    surf_H = ax_H.plot_surface(Phi, Z, result[H_key], cmap="viridis",
-                                rcount=100, ccount=100)
-    fig.colorbar(surf_H, ax=ax_H, shrink=0.45, aspect=10, pad=0.12)
-    ax_H.set_xlabel("φ, рад", fontsize=9, labelpad=2)
-    ax_H.set_ylabel("Z", fontsize=9, labelpad=2)
-    ax_H.set_zlabel("H", fontsize=9, labelpad=2)
-    ax_H.tick_params(labelsize=7, pad=1)
-
-    ax_P = fig.add_subplot(1, 2, 2, projection="3d")
-    surf_P = ax_P.plot_surface(Phi, Z, result[P_key], cmap="plasma",
-                                rcount=100, ccount=100)
-    fig.colorbar(surf_P, ax=ax_P, shrink=0.45, aspect=10, pad=0.12)
-    ax_P.set_xlabel("φ, рад", fontsize=9, labelpad=2)
-    ax_P.set_ylabel("Z", fontsize=9, labelpad=2)
-    ax_P.set_zlabel("P", fontsize=9, labelpad=2)
-    ax_P.tick_params(labelsize=7, pad=1)
+    for idx, key in enumerate([key_smooth, key_dep], start=1):
+        ax = fig.add_subplot(1, 2, idx, projection="3d")
+        surf = ax.plot_surface(Phi, Z, result[key], cmap=cmap,
+                               rcount=100, ccount=100)
+        fig.colorbar(surf, ax=ax, shrink=0.45, aspect=10, pad=0.12)
+        ax.set_xlabel("φ, рад", fontsize=9, labelpad=2)
+        ax.set_ylabel("Z", fontsize=9, labelpad=2)
+        ax.set_zlabel(zlabel, fontsize=9, labelpad=2)
+        ax.tick_params(labelsize=7, pad=1)
 
     fig.subplots_adjust(left=0.03, right=0.97, top=0.97, bottom=0.03,
                         wspace=0.15)
@@ -382,19 +374,18 @@ def save_results(result, params, folder):
     os.makedirs(folder, exist_ok=True)
     dep_name = params["depression_name"]
 
-    for name, plot_fn in [("pressure_2d_Z0", plot_pressure_2d_section),
-                           ("F_vs_eps", plot_F_vs_epsilon),
-                           ("mu_vs_eps", plot_mu_vs_epsilon),
-                           ("Q_vs_eps", plot_Q_vs_epsilon)]:
+    for name, plot_fn in [("example_load", plot_F_vs_epsilon),
+                           ("example_friction", plot_mu_vs_epsilon),
+                           ("example_flow", plot_Q_vs_epsilon)]:
         fig = plot_fn(result, dep_name)
         fig.savefig(os.path.join(folder, f"{name}.png"), dpi=150)
 
-    # 3D-поля: без углублений и с углублениями — отдельные файлы
-    fig_smooth = _plot_3d_pair(result, "H_nd_3d", "P_nd_3d")
-    fig_smooth.savefig(os.path.join(folder, "fields_3d_smooth.png"), dpi=150)
+    # 3D-поля: группировка по типу поля (smooth + dep в каждом файле)
+    fig_p = _plot_3d_field(result, "P_nd_3d", "P_dep_3d", "plasma", "P")
+    fig_p.savefig(os.path.join(folder, "example_pressure_3d.png"), dpi=150)
 
-    fig_dep = _plot_3d_pair(result, "H_dep_3d", "P_dep_3d")
-    fig_dep.savefig(os.path.join(folder, "fields_3d_dep.png"), dpi=150)
+    fig_h = _plot_3d_field(result, "H_nd_3d", "H_dep_3d", "viridis", "H")
+    fig_h.savefig(os.path.join(folder, "example_clearance_3d.png"), dpi=150)
 
     eps = result["epsilon_values"]
     header = "epsilon,F_no_dep,F_dep,mu_no_dep,mu_dep,Q_no_dep,Q_dep"
