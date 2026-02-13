@@ -81,23 +81,17 @@ def _depression_elliptic_cylinder_rounded(H, H_p, A_nd, B_nd, delta_phi, delta_Z
     H[mask_outer] += H_p * np.cos(np.pi * (r[mask_outer] - 0.7) / 0.6) ** 2
 
 
-def _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z,
-                              R_bearing, r0, c, L):
-    """Тип 5. Сферическая шапка (a = b = r0).
+def _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z):
+    """Тип 5. Сферическая шапка.
 
-    Вычисление ведётся в физических координатах (метры), чтобы
-    избежать рассогласования масштабов (r0/R vs h_p/c).
+    Профиль: дуга окружности в нормализованных координатах.
+    Радиус сферы R_s вычисляется так, чтобы при ρ=0 глубина = H_p,
+    при ρ=1 глубина = 0  (ρ — нормализованное расстояние от центра).
     """
-    h_p = H_p * c                            # глубина в метрах
-    R_s = (r0 ** 2 + h_p ** 2) / (2 * h_p)  # радиус сферы, м
-
-    d_phi_m = delta_phi * R_bearing          # расстояние по φ, м
-    d_Z_m = delta_Z * (L / 2)               # расстояние по Z, м
-    rho_sq = d_phi_m ** 2 + d_Z_m ** 2
-
-    mask = rho_sq <= r0 ** 2
-    H[mask] += (np.sqrt(R_s ** 2 - rho_sq[mask])
-                - np.sqrt(R_s ** 2 - r0 ** 2)) / c
+    rho2 = (delta_phi / B_nd) ** 2 + (delta_Z / A_nd) ** 2
+    mask = rho2 <= 1.0
+    R_s = (1.0 + H_p ** 2) / (2.0 * H_p)
+    H[mask] += np.sqrt(R_s ** 2 - rho2[mask]) - np.sqrt(R_s ** 2 - 1.0)
 
 
 def _depression_conical(H, H_p, A_nd, B_nd, delta_phi, delta_Z):
@@ -181,9 +175,7 @@ def create_H_with_depressions(H0, params, Phi_mesh, Z_mesh, phi_c_flat, Z_c_flat
         elif dep_type == 4:
             _depression_elliptic_cylinder_rounded(H, H_p, A_nd, B_nd, delta_phi, delta_Z)
         elif dep_type == 5:
-            _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z,
-                                      params["R"], params["a"],
-                                      params["c"], params["L"])
+            _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z)
         elif dep_type == 6:
             _depression_conical(H, H_p, A_nd, B_nd, delta_phi, delta_Z)
         elif dep_type == 7:
