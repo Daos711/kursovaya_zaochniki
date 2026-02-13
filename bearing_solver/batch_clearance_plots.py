@@ -62,7 +62,7 @@ def main():
 
         fig = plot_clearance_2d_section(params)
         filename = f"clearance_type_{dep_type:02d}.png"
-        fig.savefig(os.path.join(output_dir, filename), dpi=600)
+        fig.savefig(os.path.join(output_dir, filename), dpi=500)
         print("OK")
 
     print(f"\nВсе графики сохранены в: {os.path.abspath(output_dir)}")

@@ -378,14 +378,14 @@ def save_results(result, params, folder):
                            ("example_friction", plot_mu_vs_epsilon),
                            ("example_flow", plot_Q_vs_epsilon)]:
         fig = plot_fn(result, dep_name)
-        fig.savefig(os.path.join(folder, f"{name}.png"), dpi=150)
+        fig.savefig(os.path.join(folder, f"{name}.png"), dpi=500)
 
     # 3D-поля: группировка по типу поля (smooth + dep в каждом файле)
     fig_p = _plot_3d_field(result, "P_nd_3d", "P_dep_3d", "plasma", "P")
-    fig_p.savefig(os.path.join(folder, "example_pressure_3d.png"), dpi=150)
+    fig_p.savefig(os.path.join(folder, "example_pressure_3d.png"), dpi=500)
 
     fig_h = _plot_3d_field(result, "H_nd_3d", "H_dep_3d", "viridis", "H")
-    fig_h.savefig(os.path.join(folder, "example_clearance_3d.png"), dpi=150)
+    fig_h.savefig(os.path.join(folder, "example_clearance_3d.png"), dpi=500)
 
     eps = result["epsilon_values"]
     header = "epsilon,F_no_dep,F_dep,mu_no_dep,mu_dep,Q_no_dep,Q_dep"
