@@ -82,16 +82,16 @@ def _depression_elliptic_cylinder_rounded(H, H_p, A_nd, B_nd, delta_phi, delta_Z
 
 
 def _depression_spherical_cap(H, H_p, A_nd, B_nd, delta_phi, delta_Z):
-    """Тип 5. Сферическая шапка.
+    """Тип 5. Сферическая шапка (a = b = r0).
 
-    Профиль: дуга окружности в нормализованных координатах.
-    Радиус сферы R_s вычисляется так, чтобы при ρ=0 глубина = H_p,
-    при ρ=1 глубина = 0  (ρ — нормализованное расстояние от центра).
+    При h_p << r0 сферическая шапка практически совпадает
+    с параболоидом вращения. Используем параболическое приближение.
+    Разница с точной сферой — менее 0.01% при наших параметрах
+    (h_p/r0 ≈ 0.005).
     """
     rho2 = (delta_phi / B_nd) ** 2 + (delta_Z / A_nd) ** 2
     mask = rho2 <= 1.0
-    R_s = (1.0 + H_p ** 2) / (2.0 * H_p)
-    H[mask] += np.sqrt(R_s ** 2 - rho2[mask]) - np.sqrt(R_s ** 2 - 1.0)
+    H[mask] += H_p * (1.0 - rho2[mask])
 
 
 def _depression_conical(H, H_p, A_nd, B_nd, delta_phi, delta_Z):
