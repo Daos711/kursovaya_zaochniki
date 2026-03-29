@@ -477,6 +477,30 @@ def save_results(result, params, folder):
     np.savetxt(os.path.join(data_dir, "results.csv"), data,
                delimiter=",", header=header, comments="")
 
+    # fields.npz — все поля для перерисовки без пересчёта
+    np.savez_compressed(os.path.join(data_dir, "fields.npz"),
+                        Phi_mesh=result["Phi_mesh"],
+                        Z_mesh=result["Z_mesh"],
+                        phi_1D=result["phi_1D"],
+                        Z_1D=result["Z_1D"],
+                        H_nd_3d=result["H_nd_3d"],
+                        H_dep_3d=result["H_dep_3d"],
+                        P_nd_3d=result["P_nd_3d"],
+                        P_dep_3d=result["P_dep_3d"],
+                        epsilon_values=result["epsilon_values"],
+                        F_nd=result["F_nd"],
+                        F_dep=result["F_dep"],
+                        mu_nd=result["mu_nd"],
+                        mu_dep=result["mu_dep"],
+                        Q_nd=result["Q_nd"],
+                        Q_dep=result["Q_dep"],
+                        F_nd_3d=np.array([result["F_nd_3d"]]),
+                        F_dep_3d=np.array([result["F_dep_3d"]]),
+                        mu_nd_3d=np.array([result["mu_nd_3d"]]),
+                        mu_dep_3d=np.array([result["mu_dep_3d"]]),
+                        Q_nd_3d=np.array([result["Q_nd_3d"]]),
+                        Q_dep_3d=np.array([result["Q_dep_3d"]]))
+
     # comparison_eps06.csv
     F_s = result["F_nd_3d"]
     F_t = result["F_dep_3d"]
