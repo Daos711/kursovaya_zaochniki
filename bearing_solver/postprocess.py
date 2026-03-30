@@ -291,9 +291,9 @@ def plot_clearance_2d_section(result, dep_name="с углублениями"):
     Z_idx = np.argmin(np.abs(Z_1D - 0.0))
 
     ax.plot(phi_1D, result["H_nd_3d"][Z_idx, :],
-            label="Без углублений", color="black", linewidth=1.5)
+            label="Без углублений", color="darkorange", linewidth=1.5)
     ax.plot(phi_1D, result["H_dep_3d"][Z_idx, :],
-            label="С углублениями", color="green", linewidth=1.5)
+            label="С углублениями", color="teal", linewidth=1.5)
     ax.set_xlabel("φ, рад")
     ax.set_ylabel("H")
     ax.legend()
@@ -313,9 +313,9 @@ def plot_pressure_2d_section(result, dep_name="с углублениями"):
     Z_idx = np.argmin(np.abs(Z_1D - 0.0))
 
     ax.plot(phi_1D, result["P_nd_3d"][Z_idx, :],
-            label="Без углублений", color="black", linewidth=1.5)
+            label="Без углублений", color="darkorange", linewidth=1.5)
     ax.plot(phi_1D, result["P_dep_3d"][Z_idx, :],
-            label="С углублениями", color="green", linewidth=1.5)
+            label="С углублениями", color="teal", linewidth=1.5)
     ax.set_xlabel("φ, рад")
     ax.set_ylabel("P")
     ax.legend()
@@ -394,8 +394,8 @@ def plot_F_vs_epsilon(result, dep_name="с углублениями"):
     fig = Figure(figsize=(10, 6))
     ax = fig.add_subplot(111)
     eps = result["epsilon_values"]
-    ax.plot(eps, result["F_nd"], "o-", color="black", label="Без углублений")
-    ax.plot(eps, result["F_dep"], "s-", color="green", label="С углублениями")
+    ax.plot(eps, result["F_nd"], "o-", color="darkorange", label="Без углублений")
+    ax.plot(eps, result["F_dep"], "s-", color="teal", label="С углублениями")
     ax.set_xlabel("ε")
     ax.set_ylabel("F, Н")
     ax.legend()
@@ -410,8 +410,8 @@ def plot_mu_vs_epsilon(result, dep_name="с углублениями"):
     fig = Figure(figsize=(10, 6))
     ax = fig.add_subplot(111)
     eps = result["epsilon_values"]
-    ax.plot(eps, result["mu_nd"], "o-", color="black", label="Без углублений")
-    ax.plot(eps, result["mu_dep"], "s-", color="green", label="С углублениями")
+    ax.plot(eps, result["mu_nd"], "o-", color="darkorange", label="Без углублений")
+    ax.plot(eps, result["mu_dep"], "s-", color="teal", label="С углублениями")
     ax.set_xlabel("ε")
     ax.set_ylabel("μ")
     ax.legend()
@@ -426,8 +426,8 @@ def plot_Q_vs_epsilon(result, dep_name="с углублениями"):
     fig = Figure(figsize=(10, 6))
     ax = fig.add_subplot(111)
     eps = result["epsilon_values"]
-    ax.plot(eps, result["Q_nd"], "o-", color="black", label="Без углублений")
-    ax.plot(eps, result["Q_dep"], "s-", color="green", label="С углублениями")
+    ax.plot(eps, result["Q_nd"], "o-", color="darkorange", label="Без углублений")
+    ax.plot(eps, result["Q_dep"], "s-", color="teal", label="С углублениями")
     ax.set_xlabel("ε")
     ax.set_ylabel("Q, л/с")
     ax.legend()
