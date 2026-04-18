@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Расчёт 12 вариантов курсовых работ (GPU-солвер).
+Расчёт 13 вариантов курсовых работ (GPU-солвер).
 
 Запуск:  python run_all_variants.py
 """
@@ -17,8 +17,8 @@ from bearing_solver.postprocess import (
     save_results,
 )
 
-# 12 вариантов для расчёта
-VARIANTS = [1, 3, 5, 11, 12, 13, 15, 17, 18, 19, 20, 23]
+# 13 вариантов для расчёта
+VARIANTS = [1, 3, 5, 8, 11, 12, 13, 15, 17, 18, 19, 20, 23]
 
 STUDENTS = {
     1:  "Востриков Я.В.",
@@ -88,7 +88,7 @@ def run_variant(var_num, output_root="results"):
 
 def main():
     print("=" * 60)
-    print("  Расчёт 12 вариантов курсовых работ (GPU-солвер)")
+    print("  Расчёт 13 вариантов курсовых работ (GPU-солвер)")
     print("=" * 60)
 
     output_root = os.path.join(os.path.dirname(os.path.abspath(__file__)),
